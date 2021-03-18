@@ -5,18 +5,24 @@ import numpy as np
 import pandas as pd
 import threading
 
+now = datetime.datetime.now()
+startExpTime = now.strftime("%y_%m_%d_%H_%M_%S")
+
 # first resolve an EEG stream on the lab network
 print("looking for an EEG and Marker stream...")
-streams = resolve_stream('type', 'EEG')
+streamsEEG = resolve_stream('type', 'EEG')
 streamsMarker = resolve_stream('type', 'Markers')
 
-# create a new inlet to read from the stream
-inlet = StreamInlet(streams[0])
+inletEEG = StreamInlet(streamsEEG[0])
 inletMarker = StreamInlet(streamsMarker[0])
 
+
+#####################
+#  Marker Receiver  #
+#####################
+marker = 0
+
 def getMarker():
-    #https://github.com/chkothe/pylsl/blob/master/examples/ReceiveStringMarkers.py
-    #https://github.com/labstreaminglayer/liblsl-Csharp/blob/master/README-Unity.md
     while True:
         markers, timestamp = inletMarker.pull_sample()
         global marker
@@ -29,15 +35,15 @@ t = threading.Thread(target=getMarker)
 t.start()
 
 
-now = datetime.datetime.now()
-startExpTime = now.strftime("%y_%m_%d_%H_%M_%S")
+#####################
+#   Data Receiver   #
+#####################
 elapTime = 1   # ms
-marker = 0
 result = []
 
 while True:
     # get a new sample (you can also omit the timestamp part if you're not interested in it)
-    chunk, timestamps = inlet.pull_chunk()
+    chunk, timestamps = inletEEG.pull_chunk()
 
     # Check Marker
     if marker == 'end':
@@ -56,20 +62,21 @@ while True:
             print(sample)
 
 
-# Save data into csv
-# Datastamp | timestamp | Marker | EEG Channels (20)
-csvFile = open(startExpTime+'_eeg.csv', 'w', newline="")
+#######################
+#  Generate CSV file  #
+#######################
+def saveData2CSV(result):
+    # Datastamp | timestamp | Marker | EEG Channels (20)
+    csvFile = open(startExpTime+'_eeg.csv', 'w', newline="")
 
-print(len(result))
+    header = ["Datastamp","timestamp", "Marker"]
+    for channel in range(1, len(result[0]) - 2):
+        header.append("Channel_"+str(channel))
 
-header = ["Datastamp","timestamp", "Marker"]
-for channel in range(1, len(result[0]) - 2):
-    header.append("Channel_"+str(channel))
+    csvwriter = csv.writer(csvFile)
+    csvwriter.writerow(header)
+    for row in result:
+        csvwriter.writerow(row)
 
-csvwriter = csv.writer(csvFile)
-csvwriter.writerow(header)
-for row in result:
-    csvwriter.writerow(row)
-
-csvFile.close()
+    csvFile.close()
 
